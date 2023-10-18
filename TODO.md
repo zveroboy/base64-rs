@@ -1,0 +1,3 @@
+- [ ] add more tests
+- [ ] try mem::transmute and compare performance
+- [ ] compare performance with other libraries
