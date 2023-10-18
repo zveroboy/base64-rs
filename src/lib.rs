@@ -186,5 +186,7 @@ mod tests {
         assert_eq!(base64_decode(test_1_encoded), test_1);
 
         assert_eq!(base64_decode("bGlnaHQgd29yay4="), "light work.");
+
+        assert_eq!(base64_decode("bGlnaHQgd29yay4"), "light work.");
     }
 }
