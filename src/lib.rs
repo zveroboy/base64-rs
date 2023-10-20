@@ -76,28 +76,27 @@ fn base_encode(base_chars: &Base64SliceType, input: &[u8], padding: bool) -> Str
                 ((byte & ((1 << 4) - 1)) << 2) + (byte_3.cloned().unwrap_or_default() >> 6)
             });
 
-            let mut result = vec![a, b];
+            let mut result = [a, b, b'=', b'='];
 
-            let pad_fallback = Some(b'=').filter(|_| padding);
-
-            let c = c.map(|i| base_chars[i as usize]).or(pad_fallback);
+            let c = c.map(|i| base_chars[i as usize]);
 
             if let Some(c) = c {
-                result.push(c);
+                result[2] = c;
             }
 
             // 0bzzzzzzzz -> 0b00zzzzzz
             //     ^^^^^^        ^^^^^^
             let d = byte_3.map(|b| b & ((1 << 6) - 1));
 
-            let d = d.map(|i| base_chars[i as usize]).or(pad_fallback);
+            let d = d.map(|i| base_chars[i as usize]);
 
             if let Some(d) = d {
-                result.push(d);
+                result[3] = d;
             }
 
             result
         })
+        .filter(|b| padding || *b != b'=')
         .map(char::from)
         .collect::<String>()
 }
