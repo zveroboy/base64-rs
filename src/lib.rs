@@ -1,12 +1,11 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
-
-type Base64SliceType = [u8; 64];
+const CHARS_LEN: usize = 0o100;
+type Base64SliceType = [u8; CHARS_LEN];
 const BASE64_CHARS: Base64SliceType = get_base64_chars();
 const BASE64_URL_CHARS: Base64SliceType = get_base64url_chars();
 
 const fn get_base_chars() -> Base64SliceType {
-    let mut result = [0u8; 64];
+    let mut result = [0u8; CHARS_LEN];
     let mut i = 0u8;
     const UPPERS: (u8, u8) = (b'A', b'Z');
     let uppers_len = UPPERS.1 - UPPERS.0 + 1;
@@ -60,34 +59,32 @@ fn base_encode(base_chars: &Base64SliceType, input: &[u8], padding: bool) -> Str
             let byte_2 = chunk.get(1);
             let byte_3 = chunk.get(2);
 
-            // 0bxxxxxxxx -> 0b00xxxxxx
-            //   ^^^^^^          ^^^^^^
+            // 0b_xxxxxxxx -> 0b_00xxxxxx
+            //    ^^^^^^           ^^^^^^
             let a = byte_1 >> 2;
             let a = BASE64_CHARS[a as usize];
 
-            // 0bxxxxxxxx -> 0b00xx0000 + 0byyyyyyyy -> 0b0000yyyy = 0b00xxyyyy
-            //         ^^        ^^         ^^^^              ^^^^
+            // 0b_xxxxxxxx -> 0b_00xx0000 + 0b_yyyyyyyy -> 0b_0000yyyy = 0b_00xxyyyy
+            //          ^^         ^^          ^^^^               ^^^^
             let b = ((byte_1 & ((1 << 2) - 1)) << 4) + (byte_2.cloned().unwrap_or_default() >> 4);
             let b = BASE64_CHARS[b as usize];
 
-            // 0byyyyyyyy -> 0b00yyyy00 + 0bzzzzzzzz -> 0b000000zz = 0b00yyyyzz
-            //       ^^^^        ^^^^       ^^                  ^^
+            let mut result = [a, b, b'=', b'='];
+
+            // 0b_yyyyyyyy -> 0b_00yyyy00 + 0b_zzzzzzzz -> 0b_000000zz = 0b_00yyyyzz
+            //        ^^^^         ^^^^        ^^                   ^^
             let c = byte_2.map(|byte| {
                 ((byte & ((1 << 4) - 1)) << 2) + (byte_3.cloned().unwrap_or_default() >> 6)
             });
-
-            let mut result = [a, b, b'=', b'='];
-
             let c = c.map(|i| base_chars[i as usize]);
 
             if let Some(c) = c {
                 result[2] = c;
             }
 
-            // 0bzzzzzzzz -> 0b00zzzzzz
-            //     ^^^^^^        ^^^^^^
+            // 0b_zzzzzzzz -> 0b_00zzzzzz
+            //      ^^^^^^         ^^^^^^
             let d = byte_3.map(|b| b & ((1 << 6) - 1));
-
             let d = d.map(|i| base_chars[i as usize]);
 
             if let Some(d) = d {
@@ -109,62 +106,64 @@ fn base64url_encode(input: &[u8], padding: bool) -> String {
     base_encode(&BASE64_URL_CHARS, input, padding)
 }
 
-fn base_decode<T: AsRef<str>>(base_chars: &Base64SliceType, input: T) -> String {
-    // TODO: extract and make const
-    let hash_map = base_chars
-        .iter()
-        .enumerate()
-        .map(|(i, v)| (v, i))
-        .collect::<HashMap<_, _>>();
+fn get_position(b: u8) -> Option<u8> {
+    const UPPERS_LEN: u8 = b'Z' - b'A' + 1;
+    const LOWERS_LEN: u8 = b'z' - b'a' + 1;
 
-    let codes = input
+    let ch = match b {
+        b'A'..=b'Z' => b - b'A',
+        b'a'..=b'z' => b - b'a' + UPPERS_LEN,
+        b'0'..=b'9' => b - b'0' + UPPERS_LEN + LOWERS_LEN,
+        b'-' | b'+' => (CHARS_LEN - 2) as u8,
+        b'_' | b'/' => (CHARS_LEN - 1) as u8,
+        _ => {
+            return None;
+        }
+    };
+
+    Some(ch)
+}
+
+fn base64_decode<T: AsRef<str>>(input: T) -> String {
+    input
         .as_ref()
         .as_bytes()
-        .iter()
-        .filter_map(|c| hash_map.get(&c))
-        .map(|b| *b as u8)
-        .collect::<Vec<_>>();
-
-    codes
         .chunks(4)
         .flat_map(|chunk| {
-            let a = chunk.get(0).unwrap();
-            let b = chunk.get(1).expect("Broken encoding");
-            let c = chunk.get(2);
-            let d = chunk.get(3);
+            let a = chunk.get(0).copied().and_then(get_position).unwrap();
+            let b = chunk
+                .get(1)
+                .copied()
+                .and_then(get_position)
+                .expect("Broken encoding");
+            let c = chunk.get(2).copied().and_then(get_position);
+            let d = chunk.get(3).copied().and_then(get_position);
 
             // 0b_00aaaaaa -> 0b_aaaaaa00 + 0b_00bbbbbb -> 0b_000000bb = 0b_aaaaaabb
             //      ^^^^^^       ^^^^^^          ^^                 ^^
             let byte_1 = (a << 2) + (b >> 4);
 
-            let mut result = vec![byte_1];
+            let mut result = [Some(byte_1), None, None];
 
             if let Some(c) = c {
                 // 0b_00bbbbbb -> 0b_bbbb0000 + 0b_00cccccc -> 0b_0000cccc = 0b_bbbbcccc
                 //        ^^^^       ^^^^            ^^^^             ^^^^
                 let byte_2 = (b << 4) + (c >> 2);
-                result.push(byte_2);
+                result[1] = Some(byte_2);
             }
 
             if let Some((c, d)) = c.zip(d) {
                 // 0b_00cccccc -> 0b_cc000000 + 0b_00dddddd = 0b_ccdddddd
                 //          ^^       ^^              ^^^^^^
                 let byte_3 = (c << 6) + d;
-                result.push(byte_3);
+                result[2] = Some(byte_3);
             }
 
             result
         })
+        .filter_map(|opt| opt)
         .map(char::from)
         .collect::<String>()
-}
-
-fn base64_decode<T: AsRef<str>>(input: T) -> String {
-    base_decode(&BASE64_CHARS, input)
-}
-
-fn base64url_decode<T: AsRef<str>>(input: T) -> String {
-    base_decode(&BASE64_URL_CHARS, input)
 }
 
 #[cfg(test)]
