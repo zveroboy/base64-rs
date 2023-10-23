@@ -98,11 +98,11 @@ fn base_encode(base_chars: &Base64SliceType, input: &[u8], padding: bool) -> Str
         .collect::<String>()
 }
 
-fn base64_encode(input: &[u8], padding: bool) -> String {
+pub fn base64_encode(input: &[u8], padding: bool) -> String {
     base_encode(&BASE64_CHARS, input, padding)
 }
 
-fn base64url_encode(input: &[u8], padding: bool) -> String {
+pub fn base64url_encode(input: &[u8], padding: bool) -> String {
     base_encode(&BASE64_URL_CHARS, input, padding)
 }
 
@@ -124,7 +124,7 @@ fn get_position(b: u8) -> Option<u8> {
     Some(ch)
 }
 
-fn base64_decode<T: AsRef<str>>(input: T) -> String {
+pub fn base64_decode<T: AsRef<str>>(input: T) -> String {
     input
         .as_ref()
         .as_bytes()
@@ -168,7 +168,8 @@ fn base64_decode<T: AsRef<str>>(input: T) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::base64_decode;
+    use crate::base64_encode;
 
     #[test]
     fn it_works() {
