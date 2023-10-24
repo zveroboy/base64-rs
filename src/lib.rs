@@ -62,12 +62,12 @@ fn base_encode(base_chars: &Base64SliceType, input: &[u8], padding: bool) -> Str
             // 0b_xxxxxxxx -> 0b_00xxxxxx
             //    ^^^^^^           ^^^^^^
             let a = byte_1 >> 2;
-            let a = BASE64_CHARS[a as usize];
+            let a = base_chars[a as usize];
 
             // 0b_xxxxxxxx -> 0b_00xx0000 + 0b_yyyyyyyy -> 0b_0000yyyy = 0b_00xxyyyy
             //          ^^         ^^          ^^^^               ^^^^
             let b = ((byte_1 & ((1 << 2) - 1)) << 4) + (byte_2.cloned().unwrap_or_default() >> 4);
-            let b = BASE64_CHARS[b as usize];
+            let b = base_chars[b as usize];
 
             let mut result = [a, b, b'=', b'='];
 
@@ -170,6 +170,39 @@ pub fn base64_decode<T: AsRef<str>>(input: T) -> String {
 mod tests {
     use crate::base64_decode;
     use crate::base64_encode;
+    use crate::base64url_encode;
+    use crate::BASE64_URL_CHARS;
+
+    const HEX_CHARS: &[u8; 16] = b"0123456789abcdef";
+
+    pub fn hex(input: &[u8]) -> String {
+        input
+            .iter()
+            .flat_map(|b| {
+                [
+                    HEX_CHARS[(b >> 4) as usize] as char,
+                    HEX_CHARS[(b & 0x0f) as usize] as char,
+                ]
+            })
+            .collect::<String>()
+    }
+
+    pub fn hex_literal(input: &str) -> Option<Vec<u8>> {
+        let hex_len = input.len();
+        if hex_len % 2 != 0 {
+            return None;
+        }
+
+        let mut i = 0;
+        let mut bytes = Vec::with_capacity(hex_len / 2);
+        while i + 1 < hex_len {
+            let byte_chunk = &input[i..=i + 1];
+            let byte = u8::from_str_radix(byte_chunk, 16).unwrap();
+            bytes.push(byte);
+            i += 2;
+        }
+        Some(bytes)
+    }
 
     #[test]
     fn it_works() {
@@ -187,5 +220,18 @@ mod tests {
         assert_eq!(base64_decode("bGlnaHQgd29yay4="), "light work.");
 
         assert_eq!(base64_decode("bGlnaHQgd29yay4"), "light work.");
+    }
+
+    #[test]
+    fn it_should_correctly_encode_base64_url() {
+        let hash_bytes =
+            hex_literal("08c2f8be131d974633e6f56d97fd2de8d0655ce1b0b0655ce06ea536b502a8cd")
+                .expect("Broken encoding");
+        let test_1_encoded = base64url_encode(&hash_bytes, false);
+
+        assert_eq!(
+            test_1_encoded,
+            "CML4vhMdl0Yz5vVtl_0t6NBlXOGwsGVc4G6lNrUCqM0"
+        );
     }
 }
